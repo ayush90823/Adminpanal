@@ -8,11 +8,10 @@ import os
 
 app = Flask(__name__)
 
-# Cloudscraper to bypass protection
+# Cloudscraper setup
 scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
 
 # --- 1. FIREBASE SETUP ---
-# Render par serviceAccount ki jagah seedha databaseURL use karna easy hai
 config = {
     "apiKey": "AIzaSyAe5XKQlowY_AroKkQ80SeAYPqLnF02KoE",
     "authDomain": "animeverse-9eada.firebaseapp.com",
@@ -22,33 +21,25 @@ config = {
 firebase = pyrebase.initialize_app(config)
 db = firebase.database()
 
-# Global dictionary to keep track of logs
 monitor_logs = {}
 
 # --- 2. FIREBASE HELPER ---
 def save_to_firebase(anime, s, e, link):
     try:
-        # A. Permanent Link Storage 
         db.child("animeverse_links").child(anime).child(f"S{s}").child(f"E{e}").set({
             "url": link,
             "bot": "#",
             "time": time.time()
         })
-
-        # B. Added Today Section 
         today = time.strftime('%Y-%m-%d')
         db.child("added_today").child(today).child(anime).set({
-            "id": anime,
-            "s": s,
-            "e": e,
-            "timestamp": time.time()
+            "id": anime, "s": s, "e": e, "timestamp": time.time()
         })
         return True
-    except Exception as err:
-        print(f"Firebase Error: {err}")
+    except Exception:
         return False
 
-# --- 3. BACKGROUND MONITOR TASK ---
+# --- 3. MONITOR TASK ---
 def monitor_thread_task(anime, s, e):
     global monitor_logs
     url = f"https://archive.toonworld4all.me/episode/{anime}-{s}x{e}"
@@ -63,13 +54,11 @@ def monitor_thread_task(anime, s, e):
                 match = re.search(r'https?://[a-zA-Z0-9-]+\.pages\.dev/play/[^\s"\']+', res.text)
                 if match:
                     save_to_firebase(anime, s, e, match.group(0))
-                    monitor_logs[task_id] += f"[{t}] ✅ SUCCESS: Found & Added!\n"
+                    monitor_logs[task_id] += f"[{t}] ✅ SUCCESS: Added to Firebase!\n"
                     break 
-            
-            monitor_logs[task_id] += f"[{t}] Checking... Not found yet. (Waiting 5m)\n"
+            monitor_logs[task_id] += f"[{t}] Checking... Not found. (Waiting 5m)\n"
             time.sleep(300)
-        except Exception as err:
-            monitor_logs[task_id] += f"[{t}] Error: {str(err)}\n"
+        except Exception:
             time.sleep(60)
 
 # --- 4. HTML TEMPLATE ---
@@ -77,62 +66,89 @@ HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AnimeVerse Admin PRO</title>
+    <title>AnimeVerse Admin V15</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root { --accent: #ff7b00; --bg: #0b1118; --card: #1a2430; --monitor: #ff4757; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; padding: 10px; margin: 0; }
-        .container { max-width: 600px; margin: auto; }
-        .tabs { display: flex; overflow-x: auto; gap: 5px; margin-bottom: 10px; border-bottom: 1px solid #2d3748; }
-        .tab-btn { padding: 12px 18px; background: #1a2430; border: none; color: #94a3b8; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 13px; font-weight: bold; white-space: nowrap; }
-        .tab-btn.active { background: var(--accent); color: #000; }
-        .tab-btn.mon-tab.active { background: var(--monitor); color: #fff; }
-        .section { display: none; }
+        body { font-family: sans-serif; background: var(--bg); color: white; padding: 10px; }
+        .container { max-width: 500px; margin: auto; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 10px; border-bottom: 1px solid #334155; }
+        .tab-btn { padding: 10px; background: #1a2430; border: none; color: #94a3b8; cursor: pointer; border-radius: 5px 5px 0 0; flex: 1; font-size: 12px; }
+        .tab-btn.active { background: var(--accent); color: black; font-weight: bold; }
+        .section { display: none; background: var(--card); padding: 15px; border-radius: 0 0 10px 10px; }
         .section.active { display: block; }
-        .card { background: var(--card); padding: 20px; border-radius: 0 0 12px 12px; margin-bottom: 15px; border-top: 2px solid var(--accent); }
-        input { width: 100%; padding: 12px; border-radius: 8px; background: #0d1621; color: white; border: 1px solid #334155; box-sizing: border-box; margin-bottom: 10px; outline: none; }
-        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; transition: 0.3s; }
-        #status { background: #000; padding: 15px; border-radius: 10px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 11px; border: 1px solid #2d3748; color: #adbac7; white-space: pre-wrap; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #334155; background: #0d1621; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer; }
+        #status { background: black; padding: 15px; border-radius: 10px; height: 250px; overflow-y: auto; margin-top: 15px; font-family: monospace; font-size: 11px; white-space: pre-wrap; border: 1px solid #334155; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2 style="text-align:center; color: var(--accent);">ANIMEVERSE ADMIN</h2>
         <div class="tabs">
-            <div class="tab-btn active" onclick="openTab(event, 'bulk')">All Seasons</div>
-            <div class="tab-btn" onclick="openTab(event, 'season')">Season</div>
-            <div class="tab-btn" onclick="openTab(event, 'episode')">Episode</div>
-            <div class="tab-btn mon-tab" onclick="openTab(event, 'monitor_tab')">Monitor 📡</div>
+            <button class="tab-btn active" onclick="openTab(event, 'bulk')">All Seasons</button>
+            <button class="tab-btn" onclick="openTab(event, 'season')">Season</button>
+            <button class="tab-btn" onclick="openTab(event, 'episode')">Episode</button>
+            <button class="tab-btn" onclick="openTab(event, 'monitor_tab')">Monitor</button>
         </div>
 
         <div id="bulk" class="section active">
-            <div class="card">
-                <input type="text" id="slug_bulk" placeholder="Anime Slug">
-                <button style="background: var(--accent);" onclick="start('bulk')">FETCH ALL</button>
-            </div>
+            <input type="text" id="slug_bulk" placeholder="Anime Slug (e.g. naruto)">
+            <button style="background: var(--accent);" onclick="start('bulk')">FETCH ALL SEASONS</button>
+        </div>
+
+        <div id="season" class="section">
+            <input type="text" id="slug_season" placeholder="Anime Slug">
+            <input type="number" id="num_season" placeholder="Season Number">
+            <button style="background: #ff9f43;" onclick="start('season')">FETCH SEASON</button>
+        </div>
+
+        <div id="episode" class="section">
+            <input type="text" id="slug_ep" placeholder="Anime Slug">
+            <input type="number" id="s_ep" placeholder="Season">
+            <input type="number" id="e_ep" placeholder="Episode">
+            <button style="background: #a29bfe;" onclick="start('ep')">FETCH EPISODE</button>
         </div>
 
         <div id="monitor_tab" class="section">
-            <div class="card">
-                <input type="text" id="slug_m" placeholder="Anime Slug">
-                <input type="number" id="s_m" placeholder="Season">
-                <input type="number" id="e_m" placeholder="Episode">
-                <button style="background: var(--monitor);" onclick="start('monitor')">WATCH EPISODE</button>
-            </div>
+            <input type="text" id="slug_m" placeholder="Anime Slug">
+            <input type="number" id="s_m" placeholder="Season">
+            <input type="number" id="e_m" placeholder="Episode">
+            <button style="background: var(--monitor);" onclick="start('monitor')">START MONITOR</button>
         </div>
-        <div id="status">System Online...</div>
+
+        <div id="status">System Ready...</div>
     </div>
+
     <script>
         function openTab(evt, name) {
             let s = document.getElementsByClassName("section");
             for (let i = 0; i < s.length; i++) s[i].classList.remove("active");
+            let t = document.getElementsByClassName("tab-btn");
+            for (let i = 0; i < t.length; i++) t[i].classList.remove("active");
             document.getElementById(name).classList.add("active");
+            evt.currentTarget.classList.add("active");
         }
+
         async function start(mode) {
             const status = document.getElementById('status');
-            let url = `/fetch?mode=${mode}`; # Simplified for example
+            let url = "";
+            if(mode === 'bulk') url = `/fetch?anime=${document.getElementById('slug_bulk').value}`;
+            else if(mode === 'season') url = `/fetch?anime=${document.getElementById('slug_season').value}&season=${document.getElementById('num_season').value}`;
+            else if(mode === 'ep') url = `/fetch?anime=${document.getElementById('slug_ep').value}&season=${document.getElementById('s_ep').value}&ep=${document.getElementById('e_ep').value}`;
+            else if(mode === 'monitor') url = `/monitor?anime=${document.getElementById('slug_m').value}&season=${document.getElementById('s_m').value}&ep=${document.getElementById('e_m').value}`;
+
+            status.innerHTML = ">>> Connecting...\\n";
             const response = await fetch(url);
-            # ... Reader logic for streaming logs ...
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                status.innerHTML += decoder.decode(value);
+                status.scrollTop = status.scrollHeight;
+            }
         }
     </script>
 </body>
@@ -140,7 +156,6 @@ HTML_TEMPLATE = '''
 '''
 
 # --- 5. ROUTES ---
-
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -148,24 +163,20 @@ def index():
 @app.route('/monitor')
 def monitor_ep():
     anime = request.args.get('anime')
-    s = request.args.get('season')
-    e = request.args.get('ep')
+    s, e = request.args.get('season'), request.args.get('ep')
     task_id = f"{anime}-{s}-{e}"
-    t = threading.Thread(target=monitor_thread_task, args=(anime, s, e))
-    t.daemon = True
-    t.start()
+    threading.Thread(target=monitor_thread_task, args=(anime, s, e), daemon=True).start()
     
     @stream_with_context
     def generate():
-        yield f"🚀 Monitoring Started: {anime} S{s}E{e}\n"
+        yield f"🚀 Monitor Task Added: {anime} S{s}E{e}\n"
         last_log_len = 0
         while task_id in monitor_logs:
             current_logs = monitor_logs[task_id]
             if len(current_logs) > last_log_len:
-                new_content = current_logs[last_log_len:]
-                yield new_content
+                yield current_logs[last_log_len:]
                 last_log_len = len(current_logs)
-                if "✅" in new_content: break
+                if "✅" in current_logs: break
             time.sleep(2)
     return Response(generate(), mimetype='text/html')
 
@@ -179,7 +190,7 @@ def fetch_anime():
     def generate():
         seasons = [int(s_num)] if s_num else range(1, 15)
         for s in seasons:
-            yield f"<b>Season {s}</b>...\n"
+            yield f"--- Season {s} ---\n"
             misses = 0
             ep_range = range(int(e_num), int(e_num)+1) if e_num else range(1, 101)
             for e in ep_range:
@@ -193,18 +204,18 @@ def fetch_anime():
                             yield f"Ep {e}: ✅ Saved\n"
                             misses = 0
                         else:
-                            yield f"Ep {e}: Link not found ❌\n"
+                            yield f"Ep {e}: Not Found ❌\n"
                             misses += 1
                     else:
-                        yield f"Ep {e}: Not available ❌\n"
+                        yield f"Ep {e}: 404 ❌\n"
                         misses += 1
                 except Exception:
                     yield f"Ep {e}: Timeout ❌\n"
                     misses += 1
                 if misses >= 3 and not e_num: break
-        yield "<b>Process Completed!</b>"
+        yield "🏁 Done!"
     return Response(generate(), mimetype='text/html')
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port).0', port=port)
